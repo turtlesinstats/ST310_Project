@@ -241,3 +241,63 @@ glm_model <- glm(Diagnosis ~ ., data = thyroid_data, family = binomial)
 summary(glm_model)
 ```
 
+
+```{r}
+# GLM on full data
+glm_model <- glm(Thyroid_Cancer_Risk ~ ., data = thyroid_data, family = binomial)
+
+# Display model summary
+summary(glm_model)
+```
+
+
+```{r}
+#library(ggplot2)
+
+# Distribution of diagnosis
+ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar() + 
+  theme_minimal() + 
+  ggtitle("Diagnosis Distribution")
+
+ggplot(thyroid_data, aes(x = Gender, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Gender and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Country, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Country and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Ethnicity, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Ethnicity and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Family_History, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Family History and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Radiation_Exposure, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Radiation Exposure and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Iodine_Deficiency, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Iodine Deficiency and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Smoking, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Smoking and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Obesity, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Obesity and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Diabetes, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Diabetes and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, fill = Thyroid_Cancer_Risk)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Thyroid_Cancer_Risk and Diagnosis")
+```
+
