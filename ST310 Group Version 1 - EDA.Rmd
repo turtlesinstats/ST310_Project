@@ -1,0 +1,243 @@
+Predicting Thyroid Cancer
+
+Load the dataset
+```{r}
+thyroid_data <- read.csv("thyroid_cancer_risk_data.csv", stringsAsFactors = TRUE)
+summary(thyroid_data)
+```
+
+Categorical variables as factors
+```{r}
+categorical_var <- c("Gender", "Country", "Ethnicity", "Family_History", "Radiation_Exposure", "Iodine_Deficiency", "Smoking", "Obesity", "Diabetes", "Thyroid_Cancer_Risk", "Diagnosis")
+thyroid_data <- thyroid_data %>%
+  mutate(across(all_of(categorical_var), as.factor))
+```
+
+Continuous variables as numeric
+```{r}
+numerical_var <- c("Age", "TSH_Level", "T3_Level", "T4_Level", "Nodule_Size")
+thyroid_data <- thyroid_data %>%
+  mutate(across(all_of(numerical_var), as.numeric))
+```
+
+Check for missing values, there are no missing values.
+```{r}
+colSums(is.na(thyroid_data))
+```
+
+Set Benign and Malignant outcomes as 0,1.
+There are 163196 benign cases and 49495 malignant cases in the data set.
+```{r}
+# levels(thyroid_data$Diagnosis)[levels(thyroid_data$Diagnosis) %in% c("Benign")] <- "0"
+# levels(thyroid_data$Diagnosis)[levels(thyroid_data$Diagnosis) %in% c("Malignant")] <- "1"
+# summary(thyroid_data$Diagnosis)
+```
+
+
+Visually explore key themes using boxplots for the categorical predictors
+```{r}
+#library(ggplot2)
+
+# Distribution of diagnosis
+ggplot(thyroid_data, aes(x = Diagnosis, fill = Diagnosis)) + 
+  geom_bar() + 
+  theme_minimal() + 
+  ggtitle("Diagnosis Distribution")
+
+ggplot(thyroid_data, aes(x = Gender, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Gender and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Country, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Country and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Ethnicity, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Ethnicity and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Family_History, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Family History and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Radiation_Exposure, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Radiation Exposure and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Iodine_Deficiency, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Iodine Deficiency and Diagnosis")
+  
+ggplot(thyroid_data, aes(x = Smoking, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Smoking and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Obesity, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Obesity and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Diabetes, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Diabetes and Diagnosis")
+
+ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, fill = Diagnosis)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Thyroid_Cancer_Risk and Diagnosis")
+
+```
+
+
+Boxplots for the numerical predictors
+```{r}
+# Boxplot for TSH, T3, and T4 levels by diagnosis
+g1 <- ggplot(thyroid_data, aes(x = Diagnosis, y = TSH_Level, fill = Diagnosis)) + geom_boxplot() + ggtitle("TSH Levels by Diagnosis")
+g2 <- ggplot(thyroid_data, aes(x = Diagnosis, y = T3_Level, fill = Diagnosis)) + geom_boxplot() + ggtitle("T3 Levels by Diagnosis")
+g3 <- ggplot(thyroid_data, aes(x = Diagnosis, y = T4_Level, fill = Diagnosis)) + geom_boxplot() + ggtitle("T4 Levels by Diagnosis")
+g4 <- ggplot(thyroid_data, aes(x = Diagnosis, y = Nodule_Size, fill = Diagnosis)) + geom_boxplot() + ggtitle("Nodule Size by Diagnosis")
+g5 <- ggplot(thyroid_data, aes(x = Diagnosis, y = Age, fill = Diagnosis)) + geom_boxplot() + ggtitle(" Age by Diagnosis")
+
+g1
+g2
+g3
+g4
+g5
+
+```
+
+
+checking why the boxplots are identical, is there variation in their values:
+```{r}
+thyroid_data %>%
+  group_by(Diagnosis) %>%
+  summarise(across(c(TSH_Level, T3_Level, T4_Level, Nodule_Size), list(mean = mean, sd = sd, min = min, max = max)))
+```
+
+
+t test to check if theres any statistical significance
+```{r}
+t.test(TSH_Level ~ Diagnosis, data = thyroid_data)
+t.test(T3_Level ~ Diagnosis, data = thyroid_data)
+t.test(T4_Level ~ Diagnosis, data = thyroid_data)
+t.test(Nodule_Size ~ Diagnosis, data = thyroid_data)
+```
+
+
+# now trying to use Thyroid_Cancer_Risk as the outcome variable instead, testing if theres any significance here
+```{r}
+# Boxplots for numerical variables by Thyroid_Cancer_Risk
+g1 <- ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, y = TSH_Level, fill = Thyroid_Cancer_Risk)) + 
+  geom_boxplot(alpha = 0.5) + 
+  ggtitle("TSH Levels by Thyroid Cancer Risk") +
+  theme_minimal()
+
+g2 <- ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, y = T3_Level, fill = Thyroid_Cancer_Risk)) + 
+  geom_boxplot(alpha = 0.5) + 
+  ggtitle("T3 Levels by Thyroid Cancer Risk") +
+  theme_minimal()
+
+g3 <- ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, y = T4_Level, fill = Thyroid_Cancer_Risk)) + 
+  geom_boxplot(alpha = 0.5) + 
+  ggtitle("T4 Levels by Thyroid Cancer Risk") +
+  theme_minimal()
+
+g4 <- ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, y = Age, fill = Thyroid_Cancer_Risk)) + 
+  geom_boxplot(alpha = 0.5) + 
+  ggtitle("Age by Thyroid Cancer Risk") +
+  theme_minimal()
+
+g5 <- ggplot(thyroid_data, aes(x = Thyroid_Cancer_Risk, y = Nodule_Size, fill = Thyroid_Cancer_Risk)) + 
+  geom_boxplot(alpha = 0.5) + 
+  ggtitle("Nodule Size by Thyroid Cancer Risk") +
+  theme_minimal()
+
+g1
+g2
+g3
+g4
+g5
+
+```
+
+
+
+```{r}
+str(thyroid_data)
+summary(thyroid_data[, numerical_var])
+```
+
+
+
+
+Check correlation between numerical predictors
+```{r}
+num_df <- thyroid_data %>% select_if(is.numeric)
+corr_matrix <- cor(num_df, use = "complete.obs")
+corrplot(corr_matrix, method = "color", tl.cex = 0.7)
+
+library(corrr)
+library(ggplot2)
+library(GGally)
+
+
+
+# Convert to numeric if necessary
+thyroid_data[numerical_var] <- lapply(thyroid_data[numerical_var], as.numeric)
+
+# Compute correlation matrix
+cor_matrix <- cor(thyroid_data[numerical_var], use = "complete.obs", method = "pearson")
+
+# Print correlation matrix
+print(cor_matrix)
+
+# Visualize correlation matrix
+ggcorrplot::ggcorrplot(cor_matrix, lab = TRUE, title = "Correlation Matrix of Continuous Variables")
+
+```
+
+
+check multicollinearity (VIF)
+```{r}
+
+library(car)
+# Run logistic regression instead of linear regression
+vif_model <- glm(Diagnosis ~ Family_History + Radiation_Exposure + Iodine_Deficiency + 
+                  Smoking + Obesity + Diabetes + Gender + Country + Ethnicity, 
+                  data = thyroid_data, family = binomial)
+
+# Calculate VIF
+vif_values <- vif(vif_model)
+print(vif_values)
+
+```
+
+
+Now scale the data between 0-1
+```{r}
+# Scaling (0 to 1)
+thyroid_data[numerical_var] <- as.data.frame(lapply(thyroid_data[numerical_var], function(x) {
+  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+}))
+
+summary(thyroid_data[numerical_var])
+
+```
+
+```{r}
+# Standardise (Z score normalisation)
+thyroid_data[numerical_var] <- as.data.frame(lapply(thyroid_data[numerical_var], function(x) {
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}))
+
+summary(thyroid_data[numerical_var])
+```
+
+
+
+```{r}
+# GLM on full data
+glm_model <- glm(Diagnosis ~ ., data = thyroid_data, family = binomial)
+
+# Display model summary
+summary(glm_model)
+```
+
