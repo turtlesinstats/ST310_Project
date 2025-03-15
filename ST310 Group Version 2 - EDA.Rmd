@@ -1,0 +1,111 @@
+Predicting Thyroid Cancer
+
+Libraries
+```{r}
+library(ggplot2) # for all the graphs/ plots
+library(tidyverse)
+```
+
+Load the dataset
+```{r}
+data <- read.csv("breast-cancer.csv", stringsAsFactors = TRUE)
+# summary(data)
+# str(data)
+# colnames(data)
+```
+
+Categorical variables as factors
+```{r}
+categorical_vars <- c("diagnosis")
+data <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+Continuous variables as numeric
+```{r}
+numeric_vars <- c("radius_mean", "texture_mean", "perimeter_mean", "area_mean", 
+                  "smoothness_mean", "compactness_mean", "concavity_mean", 
+                  "concave.points_mean", "symmetry_mean", "fractal_dimension_mean",
+                  "radius_se", "texture_se", "perimeter_se", "area_se",
+                  "smoothness_se", "compactness_se", "concavity_se",
+                  "concave.points_se", "symmetry_se", "fractal_dimension_se",
+                  "radius_worst", "texture_worst", "perimeter_worst",
+                  "area_worst", "smoothness_worst", "compactness_worst",
+                  "concavity_worst", "concave.points_worst", "symmetry_worst",
+                  "fractal_dimension_worst")
+data <- data %>%
+  mutate(across(all_of(numeric_vars), as.numeric))
+```
+
+Check for missing values, there are no missing values.
+```{r}
+colSums(is.na(data))
+```
+
+Create boxplots for all the variables
+```{r}
+# Distribution of Diagnosis
+ggplot(data, aes(x = diagnosis, fill = diagnosis)) + 
+  geom_bar() +
+  theme_minimal() +
+  ggtitle("Diagnosis Distribution")
+
+# Plot for each numeric variable
+for (var in numeric_vars) {
+  
+  # Boxplot comparing benign vs malignant
+  boxplots <- ggplot(data, aes_string(x = "diagnosis", y = var, fill = "diagnosis")) +
+    geom_boxplot() +
+    theme_minimal() +
+    ggtitle(paste(var, "by Diagnosis"))
+  print(boxplots)
+}
+```
+
+
+
+Set Benign and Malignant outcomes as 0,1.
+There are 357 benign cases and 212 malignant cases in the data set.
+```{r}
+levels(data$diagnosis)[levels(data$diagnosis) %in% c("Benign")] <- "0"
+levels(data$diagnosis)[levels(data$diagnosis) %in% c("Malignant")] <- "1"
+summary(data$diagnosis)
+```
+
+
+
+
+Check correlation between numerical predictors
+```{r}
+# Compute the correlation matrix for numeric variables
+cor_matrix <- cor(data[, numeric_vars])
+print(cor_matrix)
+
+
+```
+
+
+
+```{r}
+# Standardise numeric variables using scale() in base R
+# data[ , numeric_vars] <- scale(data[ , numeric_vars])
+# library(dplyr)
+# 
+# data <- data %>%
+#   mutate(across(all_of(numeric_vars), ~ as.numeric(scale(.))))
+```
+
+
+
+```{r}
+# GLM on full data
+glm_model <- glm(diagnosis ~ . - id, data = data, family = binomial)
+
+# Display model summary
+summary(glm_model)
+```
+
+
+
+
+

@@ -2,7 +2,7 @@ Predicting Thyroid Cancer
 
 Load the dataset
 ```{r}
-thyroid_data <- read.csv("thyroid_cancer_risk_data.csv", stringsAsFactors = TRUE)
+thyroid_data <- read.csv("healthcare-dataset-stroke-data.csv", stringsAsFactors = TRUE)
 summary(thyroid_data)
 ```
 
@@ -270,7 +270,7 @@ ggplot(thyroid_data, aes(x = Country, fill = Thyroid_Cancer_Risk)) +
   
 ggplot(thyroid_data, aes(x = Ethnicity, fill = Thyroid_Cancer_Risk)) + 
   geom_bar(position = "fill") + 
-  ggtitle("Ethnicity and Diagnosis")
+  ggtitle("Ethnicity and Thyroid_Cancer_Risk")
   
 ggplot(thyroid_data, aes(x = Family_History, fill = Thyroid_Cancer_Risk)) + 
   geom_bar(position = "fill") + 
