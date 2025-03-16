@@ -1,0 +1,133 @@
+Predicting Colorectal Cancer
+
+Libraries
+```{r}
+library(ggplot2) # for all the graphs/ plots
+library(tidyverse)
+```
+
+Load the dataset
+```{r}
+data <- read.csv("colorectal_cancer_dataset.csv", stringsAsFactors = TRUE)
+summary(data)
+str(data)
+colnames(data)
+```
+
+Categorical variables as factors
+```{r}
+categorical_vars <- c("Country", "Gender", "Cancer_Stage", "Family_History", "Smoking_History", "Alcohol_Consumption",
+                      "Obesity_BMI", "Diet_Risk", "Physical_Activity", "Diabetes", "Inflammatory_Bowel_Disease", "Genetic_Mutation",
+                      "Screening_History", "Early_Detection", "Treatment_Type", "Survival_5_years", "Mortality", "Urban_or_Rural",
+                      "Economic_Classification", "Healthcare_Access", "Insurance_Status", "Survival_Prediction")
+data <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+Continuous variables as numeric
+```{r}
+numeric_vars <- c("Age", "Tumor_Size_mm","Healthcare_Costs", "Incidence_Rate_per_100K", "Mortality_Rate_per_100K")
+data <- data %>%
+  mutate(across(all_of(numeric_vars), as.numeric))
+```
+
+Check for missing values, there are no missing values.
+```{r}
+colSums(is.na(data))
+```
+
+Create barcharts for all the categorical variables
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+
+# Loop through all categorical variables and create bar plots
+for (var in categorical_vars) {
+  p <- ggplot(data, aes_string(x = var, fill = "Survival_Prediction")) +
+    geom_bar(position = "fill") +  # "fill" shows proportions within each category
+    theme_minimal() +
+    ggtitle(paste("Impact of", var, "on Survival_Prediction")) +
+    ylab("Proportion") +
+    xlab(var) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Rotate x-axis labels for better readability
+  
+  print(p)
+}
+```
+
+Create boxplots for all the numerical variables
+```{r}
+# Distribution of Survival_Prediction
+ggplot(data, aes(x = Survival_Prediction, fill = Survival_Prediction)) + 
+  geom_bar() +
+  theme_minimal() +
+  ggtitle("Survival_Prediction Distribution")
+
+# Plot for each numeric variable
+for (var in numeric_vars) {
+  
+  # Boxplot comparing benign vs malignant
+  boxplots <- ggplot(data, aes_string(x = "Survival_Prediction", y = var, fill = "Survival_Prediction")) +
+    geom_boxplot() +
+    theme_minimal() +
+    ggtitle(paste(var, "by Survival_Prediction"))
+  print(boxplots)
+}
+```
+
+
+
+Set Benign and Malignant outcomes as 0,1.
+There are 357 benign cases and 212 malignant cases in the data set.
+```{r}
+levels(data$Survival_Prediction)[levels(data$Survival_Prediction) %in% c("No")] <- "0"
+levels(data$Survival_Prediction)[levels(data$Survival_Prediction) %in% c("Yes")] <- "1"
+summary(data$Survival_Prediction)
+```
+
+
+
+
+Check correlation between numerical predictors
+```{r}
+# Compute the correlation matrix for numeric variables
+cor_matrix <- cor(data[, numeric_vars])
+print(cor_matrix)
+
+
+```
+
+
+
+```{r}
+#Standardise numeric variables using scale() in base R
+data[ , numeric_vars] <- scale(data[ , numeric_vars])
+library(dplyr)
+
+data <- data %>%
+  mutate(across(all_of(numeric_vars), ~ as.numeric(scale(.))))
+```
+
+
+
+```{r}
+# GLM on full data
+glm_model <- glm(Survival_Prediction ~ ., data = data, family = binomial)
+
+# Display model summary
+summary(glm_model)
+```
+
+
+Check multicolinearity:
+```{r}
+library(car)
+vif_values <- vif(glm_model)
+print(vif_values)
+
+```
+
+
+
+
