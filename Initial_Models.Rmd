@@ -103,12 +103,27 @@ probs_mini_model <- predict(mini_model, data_test, type = "response")
 
 ```{r}
 pred_mini_model <- rep(0, 50249) #Length of data_test
-pred_mini_model[probs_mini_model > 0.5 ] = 1
+pred_mini_model[probs_mini_model > 0.6 ] = 1
 mean(pred_mini_model == data_test$Survival_Prediction)
 ```
 ```{r}
-table(pred_mini_model, data_test$Survival_Prediction ) 
+table(pred_mini_model, data_test$Survival_Prediction ) # Same problem
 ```
+# KNN just in case
+```{r}
+# No time to finish before meet
+library(class)
+library(dplyr)
+
+train.X <- as.data.frame(select(data_train, -Survival_Prediction))
+test.X <- as.data.frame(select(data_test, -Survival_Prediction))
+train.Answer <- data_train$Survival_Prediction
+
+knn.pred <- knn(train.X, test.X, train.Answer , k = 1)
+
+```
+
+
 
 
 
