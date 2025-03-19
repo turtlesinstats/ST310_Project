@@ -1,0 +1,130 @@
+---
+title: "First Model"
+author: "ST310"
+date: "2025-03-17"
+output: html_document
+---
+
+```{r}
+# Data is previously loaded from EDA document
+# Sample split
+library(caTools)
+```
+
+
+# Splitting data into train and test with a 70/30 ratio
+```{r}
+set.seed(17)
+
+split <- sample.split(data$Survival_Prediction, SplitRatio = 0.7)
+
+data_train <- subset(data, split == TRUE)
+data_test <- subset(data, split == FALSE) 
+```
+
+```{r}
+table(data_train$Survival_Prediction)
+table(data_test$Survival_Prediction)
+```
+
+# Splitting data 
+```{r}
+# Initial model with all predictors
+initial_model <- glm(Survival_Prediction ~ . , data = data_train, family = binomial)
+```
+
+```{r}
+summary(initial_model)
+
+# Significant predictors include Country, Treatment_Type, at the 5% level or less, and Cancer_Stage, Tumor_Size_mm, Family_History, Diet_Risk, Physical_Activty at the 10% level. 
+```
+```{r}
+# Predict on initial model with all predictors
+probs_initial_model <- predict(initial_model, data_test, type = "response")
+```
+
+```{r}
+# Quick check
+probs_initial_model[1:10]
+```
+
+```{r}
+pred_initial_model <- rep(0, 50249) #Length of data_test
+pred_initial_model[probs_initial_model > 0.57 ] = 1
+mean(pred_initial_model == data_test$Survival_Prediction)
+```
+```{r}
+table(pred_initial_model, data_test$Survival_Prediction ) 
+# Using 0.5 everything was predicted positive.
+# The accuracy is 0.599% which is the imbalance level
+
+# It only decreases as the probablility threshold is increased.
+
+```
+# Second Model with Less Predictors
+
+```{r}
+# Model formula
+second_model <- glm(Survival_Prediction ~ Country + Treatment_Type + Cancer_Stage + Tumor_Size_mm + Family_History + Diet_Risk + Physical_Activity , data = data_train, family = binomial)
+```
+
+```{r}
+summary(second_model) # Everything is now significant at least at 10% level
+```
+```{r}
+# Predictions
+
+# Probabilities
+probs_second_model <- predict(second_model, data_test, type = "response")
+
+#probs_second_model[1:10]
+
+# Converting to probabilities
+pred_second_model <- rep(0, 50249) #Length of data_test
+pred_second_model[probs_second_model > 0.6 ] = 1
+mean(pred_second_model == data_test$Survival_Prediction)
+```
+
+```{r}
+table(pred_second_model, data_test$Survival_Prediction ) 
+
+# We have the same problem as the initial model
+```
+# Very reduced model
+```{r}
+mini_model <- glm(Survival_Prediction ~ Country + Treatment_Type, data = data_train, family = binomial)
+
+summary(mini_model)
+```
+
+```{r}
+probs_mini_model <- predict(mini_model, data_test, type = "response")
+```
+
+```{r}
+pred_mini_model <- rep(0, 50249) #Length of data_test
+pred_mini_model[probs_mini_model > 0.6 ] = 1
+mean(pred_mini_model == data_test$Survival_Prediction)
+```
+```{r}
+table(pred_mini_model, data_test$Survival_Prediction ) # Same problem
+```
+# KNN just in case
+```{r}
+# No time to finish before meet
+library(class)
+library(dplyr)
+
+train.X <- as.data.frame(select(data_train, -Survival_Prediction))
+test.X <- as.data.frame(select(data_test, -Survival_Prediction))
+train.Answer <- data_train$Survival_Prediction
+
+knn.pred <- knn(train.X, test.X, train.Answer , k = 1)
+
+```
+
+
+
+
+
+
