@@ -1,0 +1,169 @@
+
+Load the dataset, pick the relevant variables and export as CSV file
+Do not run this, run chunk 2 onwards
+```{r}
+# Load libraries
+library(haven)
+library(tidyverse)
+library(dplyr)
+
+# We got the dataset from https://webfs.oecd.org/pisa2018/index.html
+
+student_file <- "~/Documents/1. uni/Year 3/AT - ST310/group/CY07_MSU_STU_QQQ.sav"
+
+df_student <- read_sav(student_file)
+
+# Step 1: Select Relevant Variables for the project, which will be good for interpretabilitiy
+df_student_selected <- df_student %>%
+  dplyr::select(CNTSTUID,    # Student ID
+         PV1MATH,     # Math Score
+         PV1READ,     # Reading Score
+         PV1SCIE,     # Science Score
+         ESCS,        # Socioeconomic Status
+         ST004D01T,   # Gender
+         ST005Q01TA,  # Highest level of schooling completed by your mother?
+         ST007Q01TA,  # Highest level of schooling completed by your father?
+         HISCED,      # Highest Education of parents (ISCED)
+         ST011Q04TA,  # In your home: A computer you can use for school work
+         ST011Q06TA,  # In your home: A link to the Internet
+         ST012Q09NA,  # How many in your home: Musical instruments (e.g. guitar, piano)
+         IC006Q01TA,  # During a typical weekday, for how long do you use the Internet outside of school
+         WB150Q01HA,  # How is your health?
+         PA042Q01TA,  # Annual household income?
+         EFFORT1,     # How much effort did you put into this test?
+         IMMIG,       # Index Immigration status
+         LANGN,       # Language at home (3-digit code)
+         ST034Q06TA,  # Thinking about your school: I feel lonely at school.
+         ST176Q03IA,  # How often involved in: Reading online news
+         ST175Q01IA,  # About how much time do you usually spend reading for enjoyment?
+         ST022Q01TA,  # What language do you speak at home most of the time?
+         ST012Q02TA,  # How many in your home: Cars
+         ST016Q01NA,  # Overall, how satisfied are you with your life as a whole these days?
+         AGE,         # Age
+         GRADE,       # Grade compared to modal grade in country
+         TMINS,       # Learning time (minutes per week) - in total
+         ESCS,        # Index of economic, social and cultural status
+         SCCHANGE,    # Number of school changes
+         COMPETE,     # Competitiveness (WLE)
+         GFOFAIL      # General fear of failure (WLE)
+       
+  )
+
+# Step 2: Handle Missing Data
+# Drop columns which has over 30% of missing values
+df_student_cleaned <- df_student_selected %>%
+  dplyr::select(where(~ mean(is.na(.)) < 0.3))
+
+# Fill small missing values with median for numerical columns
+df_student_cleaned <- df_student_cleaned %>%
+  mutate(across(where(is.numeric), ~ replace_na(., median(., na.rm = TRUE))))
+
+# Convert categorical variables to factors
+df_student_cleaned <- df_student_cleaned %>%
+  mutate(across(where(is.character), as.factor))
+
+# Step 4: Save the Cleaned and Merged Dataset as CSV onto my desktop
+output_file <- "~/Desktop/PISA_Merged_Cleaned.csv"
+write.csv(df_student_cleaned, output_file, row.names = FALSE)
+
+# View Summary of Merged Data
+summary(df_student_cleaned)
+```
+
+
+Load the data file
+```{r}
+data <- read.csv("PISA_Merged_Cleaned.csv", stringsAsFactors = TRUE)
+summary(data)
+str(data)
+colnames(data)
+```
+
+Categorical variables as factors
+```{r}
+categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "HISCED", "ST011Q04TA",
+                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "LANGN", "ST034Q06TA",
+                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA", "GRADE"
+                      )
+data <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+Continuous variables as numeric
+```{r}
+numeric_vars <- c( "PV1READ","PV1SCIE", "ESCS", "AGE", "COMPETE", "GFOFAIL")
+data <- data %>%
+  mutate(across(all_of(numeric_vars), as.numeric))
+```
+
+Check for missing values, there are no missing values.
+```{r}
+colSums(is.na(data))
+```
+
+
+Create boxplots for all the categorical variables against maths score (PV1MATH)
+```{r}
+for (var in categorical_vars) {
+    print(ggplot(data, aes(x = get(var), y = PV1MATH, fill = get(var))) +
+        geom_boxplot() +
+        labs(title = paste("PV1MATH by", var),
+             x = var,
+             y = "PV1MATH") +
+        theme_minimal()) 
+}
+```
+
+
+
+Create scatterplots for all the continuous variables against maths score (PV1MATH)
+```{r}
+scatter_plots <- lapply(numeric_vars, function(var) {
+  ggplot(data, aes_string(x = var, y = "PV1MATH")) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(title = paste("PV1MATH vs", var),
+         x = var,
+         y = "PV1MATH") +
+    theme_minimal()
+})
+
+scatter_plots
+
+```
+
+
+
+
+
+Check correlation between numerical predictors
+```{r}
+# Compute the correlation matrix for numeric variables
+cor_matrix <- cor(data[, numeric_vars])
+print(cor_matrix)
+
+
+```
+
+
+
+
+Run regression
+```{r}
+# LM on full data
+lm_model <- lm(PV1MATH ~ ., data = data, family = binomial)
+
+# Display model summary
+summary(lm_model)
+```
+
+
+
+
+Check multicolinearity:
+```{r}
+library(car)
+vif_values <- vif(lm_model)
+print(vif_values)
+
+```
