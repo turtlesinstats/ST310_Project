@@ -1,0 +1,32 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+data <- data_mc
+```
+
+```{r}
+#Loading Data
+library(dplyr)
+
+
+#Removed 'LANGN651' as not categorical
+categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "HISCED", "ST011Q04TA",
+                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "ST034Q06TA",
+                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA", "GRADE"
+                      )
+data_2 <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+```{r}
+model_1 <- lm(PV1MATH ~., data = data_2)
+```
+
+```{r}
+summary(model_1) #This model will be the baseline, all predictors are significant, and adjusted R^2 is fairly good- around 0.76
+```
+
