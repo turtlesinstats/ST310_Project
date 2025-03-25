@@ -21,18 +21,16 @@ df_student_selected <- df_student %>%
          PV1SCIE,     # Science Score
          ESCS,        # Socioeconomic Status
          ST004D01T,   # Gender
-         ST005Q01TA,  # Highest level of schooling completed by your mother?
+         ST005Q01TA,  # Highest level of schooling completed by your mother
          ST007Q01TA,  # Highest level of schooling completed by your father?
-         HISCED,      # Highest Education of parents (ISCED)
          ST011Q04TA,  # In your home: A computer you can use for school work
          ST011Q06TA,  # In your home: A link to the Internet
          ST012Q09NA,  # How many in your home: Musical instruments (e.g. guitar, piano)
-         IC006Q01TA,  # During a typical weekday, for how long do you use the Internet outside of school
+         IC006Q01TA,  # During a typical weekday, how long do you use Internet outside school
          WB150Q01HA,  # How is your health?
          PA042Q01TA,  # Annual household income?
          EFFORT1,     # How much effort did you put into this test?
          IMMIG,       # Index Immigration status
-         LANGN,       # Language at home (3-digit code)
          ST034Q06TA,  # Thinking about your school: I feel lonely at school.
          ST176Q03IA,  # How often involved in: Reading online news
          ST175Q01IA,  # About how much time do you usually spend reading for enjoyment?
@@ -40,12 +38,11 @@ df_student_selected <- df_student %>%
          ST012Q02TA,  # How many in your home: Cars
          ST016Q01NA,  # Overall, how satisfied are you with your life as a whole these days?
          AGE,         # Age
-         GRADE,       # Grade compared to modal grade in country
          TMINS,       # Learning time (minutes per week) - in total
-         ESCS,        # Index of economic, social and cultural status
          SCCHANGE,    # Number of school changes
          COMPETE,     # Competitiveness (WLE)
-         GFOFAIL      # General fear of failure (WLE)
+         GFOFAIL,     # General fear of failure (WLE)
+         STUBMI       # BMI of student
        
   )
 
@@ -63,7 +60,7 @@ df_student_cleaned <- df_student_cleaned %>%
   mutate(across(where(is.character), as.factor))
 
 # Step 4: Save the Cleaned and Merged Dataset as CSV onto my desktop
-output_file <- "~/Desktop/PISA_Merged_Cleaned.csv"
+output_file <- "~/Desktop/Final_310_dataset.csv"
 write.csv(df_student_cleaned, output_file, row.names = FALSE)
 
 # View Summary of Merged Data
@@ -73,7 +70,7 @@ summary(df_student_cleaned)
 
 Load the data file
 ```{r}
-data <- read.csv("PISA_Merged_Cleaned.csv", stringsAsFactors = TRUE)
+data <- read.csv("Final_310_dataset.csv", stringsAsFactors = TRUE)
 summary(data)
 str(data)
 colnames(data)
@@ -81,9 +78,9 @@ colnames(data)
 
 Categorical variables as factors
 ```{r}
-categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "HISCED", "ST011Q04TA",
-                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "LANGN", "ST034Q06TA",
-                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA", "GRADE"
+categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "ST011Q04TA",
+                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "ST034Q06TA",
+                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA" 
                       )
 data <- data %>%
   mutate(across(all_of(categorical_vars), as.factor))
@@ -91,7 +88,7 @@ data <- data %>%
 
 Continuous variables as numeric
 ```{r}
-numeric_vars <- c( "PV1READ","PV1SCIE", "ESCS", "AGE", "COMPETE", "GFOFAIL")
+numeric_vars <- c("PV1MATH","PV1READ","PV1SCIE", "ESCS", "AGE", "COMPETE", "GFOFAIL")
 data <- data %>%
   mutate(across(all_of(numeric_vars), as.numeric))
 ```
@@ -100,6 +97,7 @@ Check for missing values, there are no missing values.
 ```{r}
 colSums(is.na(data))
 ```
+
 
 
 Create boxplots for all the categorical variables against maths score (PV1MATH)
@@ -155,6 +153,8 @@ lm_model <- lm(PV1MATH ~ ., data = data, family = binomial)
 
 # Display model summary
 summary(lm_model)
+display(lm_model)
+Anova(lm_model)
 ```
 
 
@@ -167,3 +167,6 @@ vif_values <- vif(lm_model)
 print(vif_values)
 
 ```
+
+
+
