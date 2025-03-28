@@ -1,0 +1,118 @@
+---
+title: "BeforeMonday"
+author: "Mar"
+date: "2025-03-28"
+output: html_document
+---
+* This is for work before monday 31
+* I made a separate doc just for conciseness
+
+* Can now use objects like data_testing and data_training
+
+Main resource used: https://rviews.rstudio.com/2019/06/19/a-gentle-intro-to-tidymodels/ 
+
+## Data Pre-Processing
+
+```{r}
+# Import data here as data
+# Most of initial code is from EDA
+```
+
+```{r}
+library(dplyr)
+library(tidymodels)
+```
+
+```{r}
+set.seed(17)
+```
+
+
+```{r}
+# Categorical variables
+categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "ST011Q04TA",
+                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "ST034Q06TA",
+                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA" 
+                      )
+data <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+```{r}
+# Numeric variables
+numeric_vars <- c("PV1MATH","PV1READ","PV1SCIE", "ESCS", "AGE", "COMPETE", "GFOFAIL")
+data <- data %>%
+  mutate(across(all_of(numeric_vars), as.numeric))
+```
+
+## Splitting Data into Train and Test
+
+```{r}
+data_split <- initial_split(data, prop = 0.7)
+data_split
+```
+
+```{r}
+# Look at data
+data_split %>% 
+  training() %>% 
+  glimpse()
+```
+```{r}
+# Source: https://recipes.tidymodels.org/articles/Ordering.html
+
+data_recipe <- training(data_split) %>% 
+  recipe(PV1MATH ~.) %>% 
+  step_novel(all_nominal_predictors()) %>% # To handle new levels
+  step_unknown(all_nominal_predictors()) %>% # To crate new unknown level for missing or rare
+  step_dummy(all_nominal_predictors()) %>% # Creates dummy variables for categorical 
+  step_corr(all_numeric_predictors()) %>% # Removes highly correlated
+  step_center(all_numeric_predictors(), - all_outcomes()) %>% # Centers all numeric mean zero
+  step_scale(all_numeric_predictors(), -all_outcomes()) %>% # Standardizes sd of 1
+  
+  prep()
+
+```
+
+```{r}
+data_recipe
+```
+
+```{r}
+# Execute for test data
+
+data_testing <- data_recipe %>% 
+  bake(testing(data_split))
+
+glimpse(data_testing)
+```
+
+```{r}
+data_training <- juice(data_recipe)
+
+glimpse(data_training)
+```
+
+
+## Test: Initial model
+```{r}
+# Training the model
+data_lm <- linear_reg() %>%  # From parsnip
+  set_engine("lm") %>% 
+  fit(PV1MATH ~ ., data = data_training)
+```
+
+```{r}
+# Predictions
+predict(data_lm, data_testing)
+```
+```{r}
+# Getting stats
+data_lm %>% 
+  predict(data_testing) %>% 
+  bind_cols(data_testing) %>% 
+  metrics(truth = PV1MATH, estimate = .pred)
+```
+
+
+
