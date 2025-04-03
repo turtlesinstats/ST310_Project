@@ -1,0 +1,358 @@
+---
+title: "Amalgamation Notebook"
+output: html_notebook
+---
+
+# ST310 Final Project
+
+## Introduction
+
+## Data Preparation
+
+```{r}
+# Import data here as data
+# Most of initial code is from EDA
+```
+
+```{r}
+library(dplyr)
+library(tidymodels)
+```
+
+```{r}
+set.seed(17)
+```
+
+```{r}
+# Categorical variables
+categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "ST011Q04TA",
+                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "ST034Q06TA",
+                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA" 
+                      )
+data <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+```{r}
+# Numeric variables
+numeric_vars <- c("PV1MATH","PV1READ","PV1SCIE", "ESCS", "AGE", "COMPETE", "GFOFAIL")
+data <- data %>%
+  mutate(across(all_of(numeric_vars), as.numeric))
+```
+
+### Splitting Data into Train and Test
+
+```{r}
+data_split <- initial_split(data, prop = 0.7)
+data_split
+```
+
+```{r}
+# Look at data
+data_split %>% 
+  training() %>% 
+  glimpse()
+```
+
+```{r}
+# Source: https://recipes.tidymodels.org/articles/Ordering.html
+
+data_recipe <- training(data_split) %>% 
+  recipe(PV1MATH ~.) %>% 
+  step_novel(all_nominal_predictors()) %>% # To handle new levels
+  step_unknown(all_nominal_predictors()) %>% # To crate new unknown level for missing or rare
+  step_dummy(all_nominal_predictors()) %>% # Creates dummy variables for categorical 
+  step_corr(all_numeric_predictors()) %>% # Removes highly correlated
+  step_center(all_numeric_predictors(), - all_outcomes()) %>% # Centers all numeric mean zero
+  step_scale(all_numeric_predictors(), -all_outcomes()) %>% # Standardizes sd of 1
+  
+  prep()
+
+```
+
+```{r}
+data_recipe
+```
+
+```{r}
+# Execute for test data
+
+data_testing <- data_recipe %>% 
+  bake(testing(data_split))
+
+glimpse(data_testing)
+```
+
+```{r}
+data_training <- juice(data_recipe)
+
+glimpse(data_training)
+```
+
+## Base models
+
+### Main Base Model: Linear regression
+
+```{r}
+# Training the model
+data_lm <- linear_reg() %>%  # From parsnip
+  set_engine("lm") %>% 
+  fit(PV1MATH ~ ., data = data_training)
+```
+
+```{r}
+# Predictions
+predict(data_lm, data_testing)
+```
+
+```{r}
+# Getting stats
+data_lm %>% 
+  predict(data_testing) %>% 
+  bind_cols(data_testing) %>% 
+  metrics(truth = PV1MATH, estimate = .pred)
+```
+
+### Experimental Linear Regression: Our own Implementation of gradient descent
+
+```{r}
+# Prepare data for running own gradient descent
+
+# Training data
+X_train <- as.matrix(select(data_training, -PV1MATH))  
+Y_train <- pull(data_training, PV1MATH)  
+
+# Testing data
+X_test <- as.matrix(select(data_testing, -PV1MATH))
+Y_test <- pull(data_testing, PV1MATH)
+
+  
+```
+
+In this section, we manually implemented the gradient descent algorithm to a simplified linear regression model. We chose this version of the linear regression model so that the gradient descent algorithm is simpler to implement. The additional assumption in the model is that the estimate passes through the origin, as we removed the intercept term.
+
+\$ Y = X\beta \$, and hence \$ \hat Y = X \hat\beta\$.
+
+The loss used here is the Mean Squared Error (MSE) loss and is defined by:
+
+\$ MSE = 1/n \sum \^n\_{i=1} (y_i - \hat y_i)\^2\$
+
+where $n$ is the number of observations, $y_i$ is the true value of the target variable for the $i_{th}$ observation, and $\hat y_i$ is the corresponding estimate.
+
+In order to apply the gradient descent algorithm, the gradient of the loss function is taken with respect to the parameters \$ \hat\beta \$. As there is a closed form solution for this formula, we used:
+
+\$ \nabla \_\beta MSE = -2/n \space X\^T (Y - X\beta) \$
+
+as the gradient.
+
+```{r}
+# Defining loss and gradient of loss functions wrt beta
+mse_loss <- function(X, Y, beta) {
+  return(mean((Y - X %*% beta)^2)) # Formula above
+}
+
+gradient_mse <- function(X, Y, beta) {
+  n <- length(Y) 
+  gradient <- -2 / n * t(X) %*% (Y - X %*% beta) # Formula above
+  return(gradient)
+}
+```
+
+#### Gradient Descent Methodology
+
+In this section, we defined a function that runs the gradient descent algorithm for the model described above and a variable step size using the Barzilai–Borwein (BB) method. The code below is inspired by the class notebook, adapted for linear regression with key changes, described here.
+
+First, the algorithm is initialized. As the BB method requires to keep track of the beta values from two previous iterations, the initial beta is generated using random values from the normal distribution. A step is taken in the direction of the first calculated gradient using a fixed initial step size. The second beta is then obtained, and the corresponding loss is calculated. A step counter is also initialized.
+
+Next, the main algorithm is executed within a while loop. The difference from consecutive gradients is calculated for the BB method, and the step size is obtained. The betas are shifted, and the main gradient descent update step is taken using the BB method's learning rate:
+
+\$ \beta\_{t+1} \leftarrow \beta\_t - \|\gamma\_t\|\nabla{\beta_t} MSE\$
+
+where $t$ refers to the previous iteration.
+
+With the new beta, the loss is recalculated, and the loop repeats itself until termination. There are two ways in which the algorithm can terminate. In case of convergence, the algorithm stops when the difference between the two previous losses is smaller than a predetermined threshold. On the other hand, if the threshold is not obtained the max-steps absolute limit is enforced.
+
+```{r}
+# Own gradient descet function definition
+own_gd <- function(X, Y, max_steps = 100, tol = 1e-6, initial_step_size = 0.1){
+
+
+  beta_prev2 <- rnorm(ncol(X))
+  grad_prev2 <- gradient_mse(X, Y, beta_prev2) 
+  
+  beta_prev1 <- beta_prev2 - initial_step_size * grad_prev2 
+  grad_prev1 <- gradient_mse(X, Y, beta_prev1) # Gradient at first step
+  
+  previous_loss <- mse_loss(X, Y, beta_prev2)# MSE Loss
+  next_loss <- mse_loss(X, Y, beta_prev1) 
+  
+  steps <- 1
+  
+  
+  
+  while (abs(previous_loss - next_loss) > tol) {
+    
+    # Calculating step size with BB method
+    grad_diff <- grad_prev1 - grad_prev2
+    step_BB <- sum((beta_prev1 - beta_prev2) * grad_diff) / sum(grad_diff^2)
+    
+    # Update beta
+    beta_prev2 <- beta_prev1
+    beta_prev1 <- beta_prev1 - abs(step_BB) * grad_prev1 
+    
+    # Update gradients
+    grad_prev2 <- grad_prev1
+    grad_prev1 <- gradient_mse(X, Y, beta_prev1)
+    
+    # Update loss
+    previous_loss <- next_loss
+    next_loss <- mse_loss(X, Y, beta_prev1)
+    
+    # Print loss, update step count, control loop
+    if (round(steps/5) == steps/5) print(previous_loss)
+    steps <- steps + 1
+    if (steps > max_steps) break
+  }
+
+  return(list(beta = beta_prev1, loss = next_loss))
+}
+
+```
+
+```{r}
+# Here we run the algorithm
+result <- own_gd(X_train, Y_train)
+
+#print(result$beta) 
+#print(result$loss)  
+```
+
+```{r}
+# Here we use the result to make predictions
+predictions <- X_test %*% result$beta # Using formula
+
+# Workflow code
+own_gd_predictions <- data_testing %>%
+  bind_cols(predictions = as.vector(predictions)) %>% 
+  metrics(truth = PV1MATH, estimate = predictions)
+
+own_gd_predictions
+```
+
+## Interpretable Models
+
+### GAMs
+
+```{r}
+# Gam
+gam_model <- gen_additive_mod() %>%
+  set_engine("mgcv") %>%
+  set_mode("regression")
+
+gam_fit <- fit(
+  gam_model,
+  PV1MATH ~ s(ESCS) + s(PV1READ) + s(PV1SCIE) + s(AGE) + s(COMPETE) + s(GFOFAIL), data = training(data_split)
+)
+
+gam_model <- gen_additive_mod() %>%
+  set_engine("mgcv") %>%
+  set_mode("regression")
+
+predictions <- predict(gam_fit, new_data = testing(data_split))
+```
+
+```{r}
+test_data <- testing(data_split)
+
+gam_preds <- predict(gam_fit, new_data = test_data) %>%
+  bind_cols(test_data %>% dplyr::select(PV1MATH))
+
+gam_rmse <- rmse(gam_preds, truth = PV1MATH, estimate = .pred)
+gam_rmse
+```
+
+### Single Tree
+
+```{r}
+# Decision Tree model
+tree_model <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+tree_workflow <- workflow() %>%
+  add_model(tree_model) %>%
+  add_formula(PV1MATH ~ .)
+
+tree_fit <- fit(tree_workflow, data = training(data_split))
+
+predict(tree_fit, new_data = testing(data_split))
+```
+
+```{r}
+test_data <- testing(data_split)
+
+tree_preds <- predict(tree_fit, new_data = test_data) %>%
+  bind_cols(test_data %>% dplyr::select(PV1MATH)) 
+
+tree_rmse <- rmse(tree_preds, truth = PV1MATH, estimate = .pred)
+tree_rmse
+```
+
+## Prediction Based Models
+
+### Boosted Tree
+
+```{r}
+boost_model <- boost_tree(
+  trees = 1000,         
+  tree_depth = 6,        
+  learn_rate = 0.01,     
+  loss_reduction = 0,    
+  sample_size = 1,       
+  mtry = NULL,          
+  stop_iter = 10        
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+
+boost_workflow <- workflow() %>%
+  add_model(boost_model) %>%
+  add_formula(PV1MATH ~ .)
+
+boost_fit <- fit(boost_workflow, data = training(data_split))
+
+test_data <- testing(data_split)
+
+boost_preds <- predict(boost_fit, new_data = test_data) %>%
+  bind_cols(test_data %>% dplyr::select(PV1MATH))
+
+boost_rmse <- rmse(boost_preds, truth = PV1MATH, estimate = .pred)
+boost_rmse
+```
+
+### Random Forest
+
+```{r}
+forest_model <- rand_forest(
+  trees = 1000,  
+  mtry = NULL,    
+  min_n = 5           
+) %>%
+  set_engine("ranger") %>% # This is apparently more efficient than random forest
+  set_mode("regression")
+
+forest_workflow <- workflow() %>%
+  add_model(forest_model) %>%
+  add_formula(PV1MATH ~ .)
+
+forest_fit <- fit(forest_workflow, data = training(data_split))
+
+test_data <- testing(data_split)
+
+forest_preds <- predict(forest_fit, new_data = test_data) %>%
+  bind_cols(test_data %>% dplyr::select(PV1MATH))
+
+forest_rmse <- rmse(forest_preds, truth = PV1MATH, estimate = .pred)
+forest_rmse
+
+```
