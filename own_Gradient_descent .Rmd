@@ -1,0 +1,134 @@
+---
+title: "OWN_GD"
+author: "Mar"
+date: "2025-04-03"
+output: html_document
+---
+
+## Gradient Descent
+
+```{r}
+# Prepare data for running own gradient descent
+
+# Training data
+X_train <- as.matrix(select(data_training, -PV1MATH))  
+Y_train <- pull(data_training, PV1MATH)  
+
+# Testing data
+X_test <- as.matrix(select(data_testing, -PV1MATH))
+Y_test <- pull(data_testing, PV1MATH)
+
+  
+```
+
+## Linear Regression and Own Gradient Descent
+
+In this section, we manually implemented the gradient descent algorithm to a simplified linear regression model. We chose this version of the linear regression model so that the gradient descent algorithm is simpler to implement. The additional assumption in the model is that the estimate passes through the origin, as we removed the intercept term.
+
+$ Y = X\beta $, and hence  $ \hat Y = X \hat\beta$.
+
+The loss used here is the Mean Squared Error (MSE) loss and is defined by: 
+
+$ MSE = 1/n \sum ^n_{i=1} (y_i - \hat y_i)^2$
+
+where $n$ is the number of observations, $y_i$ is the true value of the target variable for the $i_{th}$ observation, and $\hat y_i$ is the corresponding estimate.
+
+In order to apply the gradient descent algorithm, the gradient of the loss function is taken with respect to the parameters $ \hat\beta $. As there is a closed form solution for this formula, we used:
+
+$ \nabla _\beta MSE = -2/n \space X^T (Y - X\beta) $ 
+
+as the gradient.
+
+```{r}
+# Defining loss and gradient of loss functions wrt beta
+mse_loss <- function(X, Y, beta) {
+  return(mean((Y - X %*% beta)^2)) # Formula above
+}
+
+gradient_mse <- function(X, Y, beta) {
+  n <- length(Y) 
+  gradient <- -2 / n * t(X) %*% (Y - X %*% beta) # Formula above
+  return(gradient)
+}
+```
+
+## Gradient Descent Methodology
+
+In this section, we defined a function that runs the gradient descent algorithm for the model described above and a variable step size using the Barzilai–Borwein (BB) method. The code below is inspired by the class notebook, adapted for linear regression with key changes, described here.
+
+First, the algorithm is initialized. As the BB method requires to keep track of the beta values from two previous iterations, the initial beta is generated using random values from the normal distribution. A step is taken in the direction of the first calculated gradient using a fixed initial step size. The second beta is then obtained, and the corresponding loss is calculated. A step counter is also initialized.
+
+Next, the main algorithm is executed within a while loop. The difference from consecutive gradients is calculated for the BB method, and the step size is obtained. The betas are shifted, and the main gradient descent update step is taken using the BB method's learning rate:
+
+$ \beta_{t+1} \leftarrow \beta_t - |\gamma_t|\nabla{\beta_t} MSE$
+
+where $t$ refers to the previous iteration.
+
+With the new beta, the loss is recalculated, and the loop repeats itself until termination. There are two ways in which the algorithm can terminate. In case of convergence, the algorithm stops when the difference between the two previous losses is smaller than a predetermined threshold. On the other hand, if the threshold is not obtained the max-steps absolute limit is enforced.
+
+```{r}
+# Own gradient descet function definition
+own_gd <- function(X, Y, max_steps = 100, tol = 1e-6, initial_step_size = 0.1){
+
+
+  beta_prev2 <- rnorm(ncol(X))
+  grad_prev2 <- gradient_mse(X, Y, beta_prev2) 
+  
+  beta_prev1 <- beta_prev2 - initial_step_size * grad_prev2 
+  grad_prev1 <- gradient_mse(X, Y, beta_prev1) # Gradient at first step
+  
+  previous_loss <- mse_loss(X, Y, beta_prev2)# MSE Loss
+  next_loss <- mse_loss(X, Y, beta_prev1) 
+  
+  steps <- 1
+  
+  
+  
+  while (abs(previous_loss - next_loss) > tol) {
+    
+    # Calculating step size with BB method
+    grad_diff <- grad_prev1 - grad_prev2
+    step_BB <- sum((beta_prev1 - beta_prev2) * grad_diff) / sum(grad_diff^2)
+    
+    # Update beta
+    beta_prev2 <- beta_prev1
+    beta_prev1 <- beta_prev1 - abs(step_BB) * grad_prev1 
+    
+    # Update gradients
+    grad_prev2 <- grad_prev1
+    grad_prev1 <- gradient_mse(X, Y, beta_prev1)
+    
+    # Update loss
+    previous_loss <- next_loss
+    next_loss <- mse_loss(X, Y, beta_prev1)
+    
+    # Print loss, update step count, control loop
+    if (round(steps/5) == steps/5) print(previous_loss)
+    steps <- steps + 1
+    if (steps > max_steps) break
+  }
+
+  return(list(beta = beta_prev1, loss = next_loss))
+}
+
+```
+
+```{r}
+# Here we run the algorithm
+result <- own_gd(X_train, Y_train)
+
+#print(result$beta) 
+#print(result$loss)  
+```
+
+```{r}
+# Here we use the result to make predictions
+predictions <- X_test %*% result$beta # Using formula
+
+# Workflow code
+own_gd_predictions <- data_testing %>%
+  bind_cols(predictions = as.vector(predictions)) %>% 
+  metrics(truth = PV1MATH, estimate = predictions)
+
+own_gd_predictions
+```
