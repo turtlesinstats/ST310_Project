@@ -1,0 +1,319 @@
+---
+title: "BeforeMonday"
+author: "Mar"
+date: "2025-03-28"
+output: html_document
+---
+* This is for work before monday 31
+* I made a separate doc just for conciseness
+
+* Can now use objects like data_testing and data_training
+
+Main resource used: https://rviews.rstudio.com/2019/06/19/a-gentle-intro-to-tidymodels/ 
+
+## Data Pre-Processing
+
+```{r}
+# Import data here as data
+# Most of initial code is from EDA
+```
+
+```{r}
+library(dplyr)
+library(tidymodels)
+```
+
+```{r}
+set.seed(17)
+```
+
+```{r}
+colnames(data)
+```
+
+
+```{r}
+# Categorical variables
+categorical_vars <- c("ST004D01T", "ST005Q01TA", "ST007Q01TA", "ST011Q04TA",
+                      "ST011Q06TA", "ST012Q09NA", "EFFORT1", "IMMIG", "ST034Q06TA",
+                      "ST176Q03IA", "ST175Q01IA", "ST022Q01TA", "ST012Q02TA", "ST016Q01NA" 
+                      )
+data <- data %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+```
+
+```{r}
+# Numeric variables
+numeric_vars <- c("PV1MATH","PV1READ","PV1SCIE", "ESCS", "AGE", "COMPETE", "GFOFAIL")
+data <- data %>%
+  mutate(across(all_of(numeric_vars), as.numeric))
+```
+
+## Splitting Data into Train and Test
+
+```{r}
+data_split <- initial_split(data, prop = 0.7)
+data_split
+```
+
+```{r}
+# Look at data
+data_split %>% 
+  training() %>% 
+  glimpse()
+```
+```{r}
+# Source: https://recipes.tidymodels.org/articles/Ordering.html
+
+data_recipe <- training(data_split) %>% 
+  recipe(PV1MATH ~.) %>% 
+  step_novel(all_nominal_predictors()) %>% # To handle new levels
+  step_unknown(all_nominal_predictors()) %>% # To crate new unknown level for missing or rare
+  step_dummy(all_nominal_predictors()) %>% # Creates dummy variables for categorical 
+  step_corr(all_numeric_predictors()) %>% # Removes highly correlated
+  step_center(all_numeric_predictors(), - all_outcomes()) %>% # Centers all numeric mean zero
+  step_scale(all_numeric_predictors(), -all_outcomes()) %>% # Standardizes sd of 1
+  
+  prep()
+
+```
+
+```{r}
+data_recipe
+```
+
+```{r}
+# Execute for test data
+
+data_testing <- data_recipe %>% 
+  bake(testing(data_split))
+
+glimpse(data_testing)
+```
+
+```{r}
+data_training <- juice(data_recipe)
+
+glimpse(data_training)
+```
+
+
+## Test: Initial model
+```{r}
+# Training the model
+data_lm <- linear_reg() %>%  # From parsnip
+  set_engine("lm") %>% 
+  fit(PV1MATH ~ ., data = data_training)
+```
+
+```{r}
+# Predictions
+predict(data_lm, data_testing)
+```
+```{r}
+# Getting stats
+data_lm %>% 
+  predict(data_testing) %>% 
+  bind_cols(data_testing) %>% 
+  metrics(truth = PV1MATH, estimate = .pred)
+```
+
+
+
+
+High dimensional, model 1:
+LASSO
+
+```{r}
+library(tidymodels)
+# Lasso Regression (alpha = 1)
+set.seed(17)
+
+# Data split
+data_split <- initial_split(data, prop = 0.7)
+data_training <- training(data_split)
+
+
+data_recipe <- training(data_split) %>% 
+  recipe(PV1MATH ~.) %>% 
+  step_novel(all_nominal_predictors()) %>% # To handle new levels
+  step_unknown(all_nominal_predictors()) %>% # To crate new unknown level for missing or rare
+  step_dummy(all_nominal_predictors()) %>% # Creates dummy variables for categorical 
+  step_corr(all_numeric_predictors()) %>% # Removes highly correlated
+  step_center(all_numeric_predictors(), - all_outcomes()) %>% # Centers all numeric mean zero
+  step_zv(all_predictors()) %>%
+  step_scale(all_numeric_predictors(), -all_outcomes()) %>% # Standardizes sd of 1
+  step_interact(terms = ~ starts_with("ST0"):starts_with("ST0"))
+
+
+# Prep the recipe
+prep_recipe <- prep(data_recipe)
+
+# Check the number of columns after preprocessing
+baked_data <- bake(prep_recipe, new_data = NULL)
+
+# View the number of predictors (excluding outcome)
+num_predictors <- ncol(baked_data) - 1
+cat("Number of predictors after preprocessing:", num_predictors, "\n")
+
+# Lasso model with tuning for penalty
+lasso <- linear_reg(
+  penalty = tune(), #lambda
+  mixture = 1   # L1 for lasso
+  ) %>%
+  set_engine("glmnet") %>%
+  set_mode("regression")
+
+# Workflow using formula
+lasso_wf <- workflow() %>%
+  add_model(lasso) %>%
+  add_recipe(data_recipe)
+
+cv_folds <- vfold_cv(training(data_split), v = 10)
+
+# Same tuning grid
+lambda_grid <- grid_regular(penalty(), levels = 20)
+
+# Tune the lasso model using cross-validation
+lasso_res <- tune_grid(
+  lasso_wf,
+  resamples = cv_folds,
+  grid = lambda_grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+# Select best lambda based on RMSE
+best_lasso <- select_best(lasso_res, metric = "rmse")
+print(best_lasso)
+
+# Finalize workflow with best lambda
+final_lasso <- finalize_workflow(lasso_wf, best_lasso)
+
+# Evaluate on test set
+final_fit <- last_fit(final_lasso, split = data_split)
+
+# Metrics
+collect_metrics(final_fit)
+
+# Plot predictions
+collect_predictions(final_fit) %>%
+  ggplot(aes(x = .pred, y = PV1MATH)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(color = "red") +
+  labs(title = "Lasso: Predicted vs Actual Math Scores")
+
+# Optional: see which variables were kept
+final_fit %>%
+  extract_workflow() %>%
+  tidy() %>%
+  filter(estimate != 0)
+```
+
+
+
+
+For our high dimensional model , we ran a Lasso regression using the tidymodels framework. 
+We chose Lasso because it shrinks less important predictors to zero. This leads to an interpretable model.
+
+We originally had 22 features, so we expanded this to 522 to make this relatively high dim. We did this through preprocessing steps such as interactions (step_interact) and removing highlight correlated variables. 
+
+Initally, we faced some errors when trying interactions, as we were facing errors that we had run out of RAM space on each of our laptops. So instead of interacting every single variable with each other we filtered the variables to just interact the ones that started with "ST0" as most of our variables started with this and still expanded to a decent p>n scenario for high dim.
+
+
+We picked 10 fold cross validation to tune for the best lambda. The lambda that was selected as the optimal was penalty = 0.0264 which was found using RMSE.
+
+The final model was evaluated on the unseen test data. Lasso shrinked many coefficients to zero and only 378 out of 522 features were in the final model. 
+Key retained features include academic indicators like PV1READ, PV1SCIE, and ESCS, which align with theoretical expectations. 
+
+
+
+
+
+High Dimensional model 2:
+RIDGE:
+```{r}
+library(tidymodels)
+set.seed(17)
+
+# Split data
+data_split <- initial_split(data, prop = 0.7)
+data_training <- training(data_split)
+
+# Recipe with high-dimensional features
+data_recipe <- recipe(PV1MATH ~ ., data = data_training) %>%
+  step_novel(all_nominal_predictors()) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_corr(all_numeric_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_center(all_numeric_predictors(), -all_outcomes()) %>%
+  step_scale(all_numeric_predictors(), -all_outcomes()) %>%
+  step_interact(terms = ~ starts_with("ST0"):starts_with("ST0"))
+
+prep_recipe <- prep(data_recipe)
+
+# Apply the recipe to the training data
+baked_data <- bake(prep_recipe, new_data = NULL)
+
+# Count number of predictors (excluding outcome)
+num_predictors <- ncol(baked_data) - 1
+cat("Number of predictors after preprocessing:", num_predictors, "\n")
+
+# Ridge model specification (L2 penalty)
+ridge_model <- linear_reg(
+  penalty = tune(),
+  mixture = 0  # Ridge
+) %>%
+  set_engine("glmnet") %>%
+  set_mode("regression")
+
+# Workflow
+ridge_wf <- workflow() %>%
+  add_recipe(data_recipe) %>%
+  add_model(ridge_model)
+
+# Cross-validation folds
+cv_folds <- vfold_cv(data_training, v = 10)
+
+# Grid for tuning lambda
+lambda_grid <- grid_regular(penalty(), levels = 20)
+
+# Tune model
+ridge_res <- tune_grid(
+  ridge_wf,
+  resamples = cv_folds,
+  grid = lambda_grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+# Select best lambda
+best_ridge <- select_best(ridge_res, metric = "rmse")
+print(best_ridge)
+
+# Finalize and fit on full training data
+final_ridge <- finalize_workflow(ridge_wf, best_ridge)
+
+# Final model evaluation on test data
+final_ridge_fit <- last_fit(final_ridge, split = data_split)
+
+# Metrics
+collect_metrics(final_ridge_fit)
+
+# Plot predictions
+collect_predictions(final_ridge_fit) %>%
+  ggplot(aes(x = .pred, y = PV1MATH)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(color = "red") +
+  labs(title = "Ridge: Predicted vs Actual Math Scores")
+
+# Optional: check coefficient shrinkage (will not zero-out in ridge)
+final_ridge_fit %>%
+  extract_workflow() %>%
+  tidy() %>%
+  arrange(desc(abs(estimate)))
+```
+
+Ridge regression was used as the second type of high dimensional model. We used interactions to get 522 features from 22, making it high dimensional. The goal was predictive accuracy and it was good at dealing with many correlated predictors which were present such as PVSCIE and PVREAD. Unlike lasso which removed the variables that were shrunk to 0, ridge reression it shrinks predictors towards 0 showing they are less important but keeps them in the model.
+
+
+
