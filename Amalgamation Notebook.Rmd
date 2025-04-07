@@ -11,6 +11,7 @@ output: html_notebook
 
 ```{r}
 # Import data here as data
+data <- read_csv("Final_310_dataset.csv")
 # Most of initial code is from EDA
 ```
 
@@ -55,8 +56,6 @@ data_split %>%
 ```
 
 ```{r}
-# Source: https://recipes.tidymodels.org/articles/Ordering.html
-
 data_recipe <- training(data_split) %>% 
   recipe(PV1MATH ~.) %>% 
   step_novel(all_nominal_predictors()) %>% # To handle new levels
@@ -93,11 +92,13 @@ glimpse(data_training)
 
 ### Main Base Model: Linear regression
 
+The initial base models uses only a few predictors
 ```{r}
 # Training the model
 data_lm <- linear_reg() %>%  # From parsnip
   set_engine("lm") %>% 
-  fit(PV1MATH ~ ., data = data_training)
+  fit(PV1MATH ~ AGE + PV1READ + ESCS, data = data_training)
+# Includes age, reading score, and socioeconomic status.
 ```
 
 ```{r}
@@ -112,9 +113,11 @@ data_lm %>%
   bind_cols(data_testing) %>% 
   metrics(truth = PV1MATH, estimate = .pred)
 ```
+From this baseline, the R-Squared is 0.69, and the RMSE is 57.47, which we will take as a baseline.
 
-### Experimental Linear Regression: Our own Implementation of gradient descent
+### Experimental Linear Regression: Our own Implementation of Gradient Descent
 
+A different data format is needed for this implementation, so the data is prepared here, from the original prepped data.
 ```{r}
 # Prepare data for running own gradient descent
 
@@ -241,10 +244,21 @@ own_gd_predictions
 
 ## Interpretable Models
 
+Two additional interpretable models were implemented and tested to evaluate how well different modelling approaches predict students' mathematics scores (PV1MATH). 
+A Generalised Additive Model (GAM), 
+A Decision Tree
+
+Each model's performance was evaluated using Root Mean Squared Error (RMSE), which provides an interpretable measure of prediction error in the same units as the outcome variable.
+
+
 ### GAMs
+The GAM was constructed using the“mgcv” engine and included several continuous predictors modelled using smoothed terms. These predictors were socioeconomic status (ESCS), reading score (PV1READ), science score (PV1SCIE), age (AGE), confidence in competition (COMPETE), and fear of failure (GFOFAIL). The smoothing functions (s()) enabled the model to capture non-linear relationships between these features and the target variable.
+
+The RMSE was approximately 51.83, indicating that the average prediction error was under 52 points. This suggests that the GAM may have effectively captured complex, non-linear data structures that contribute to math performance.
+
+
 
 ```{r}
-# Gam
 gam_model <- gen_additive_mod() %>%
   set_engine("mgcv") %>%
   set_mode("regression")
@@ -271,10 +285,14 @@ gam_rmse <- rmse(gam_preds, truth = PV1MATH, estimate = .pred)
 gam_rmse
 ```
 
-### Single Tree
+### Decision Tree
+
+The decision tree model was implemented using the “rpart” engine, which builds a tree by recursively splitting the data based on feature values to minimise error. This model used all available predictors in the dataset but imposed a rigid, hierarchical structure where decisions are made at specific thresholds.
+
+After fitting the tree on the training set and evaluating it on the test set, the resulting RMSE was 57.00, higher than that of the GAM. This indicates that although the decision tree could capture some non-linearity and interactions, it lacked the flexibility of the GAM and may have either underfitted or overfitted the data depending on the tree's structure and depth.
+
 
 ```{r}
-# Decision Tree model
 tree_model <- decision_tree() %>%
   set_engine("rpart") %>%
   set_mode("regression")
@@ -297,6 +315,163 @@ tree_preds <- predict(tree_fit, new_data = test_data) %>%
 tree_rmse <- rmse(tree_preds, truth = PV1MATH, estimate = .pred)
 tree_rmse
 ```
+
+## High Dim Models
+For our high dimensional model, we ran a Lasso regression using the tidymodels framework. 
+We chose Lasso because it shrinks less important predictors to zero. This leads to an interpretable model.
+
+We originally had 22 features, so we expanded this to 522 to make this relatively high dim. We did this through preprocessing steps such as interactions (step_interact) and removing highlight correlated variables. 
+
+Initally, we faced some errors when trying interactions, as we were facing errors that we had run out of RAM space on each of our laptops. So instead of interacting every single variable with each other we filtered the variables to just interact the ones that started with "ST0" as most of our variables started with this and still expanded to a decent p>n scenario for high dim.
+
+We picked 10 fold cross validation to tune for the best lambda. The lambda that was selected as the optimal was penalty = 0.0264 which was found using RMSE.
+
+The final model was evaluated on the unseen test data. Lasso shrinked many coefficients to zero and only 378 out of 522 features were in the final model. 
+Key retained features include academic indicators like PV1READ, PV1SCIE, and ESCS, which align with theoretical expectations. 
+### Additional Data Preparation
+```{r}
+highdim_recipe <- training(data_split) %>% 
+  recipe(PV1MATH ~.) %>% 
+  step_novel(all_nominal_predictors()) %>% # To handle new levels
+  step_unknown(all_nominal_predictors()) %>% # To crate new unknown level for missing or rare
+  step_dummy(all_nominal_predictors()) %>% # Creates dummy variables for categorical 
+  step_corr(all_numeric_predictors()) %>% # Removes highly correlated
+  step_center(all_numeric_predictors(), - all_outcomes()) %>% # Centers all numeric mean zero
+  step_zv(all_predictors()) %>%
+  step_scale(all_numeric_predictors(), -all_outcomes()) %>% # Standardizes sd of 1
+  step_interact(terms = ~ starts_with("ST0"):starts_with("ST0"))
+
+
+# Prep the recipe
+prep_recipe_highdim <- prep(highdim_recipe)
+
+# Check the number of columns after preprocessing
+baked_data_highdim <- bake(prep_recipe_highdim, new_data = NULL)
+
+# View the number of predictors (excluding outcome)
+num_predictors_highdim <- ncol(baked_data_highdim) - 1
+cat("Number of predictors after preprocessing:", num_predictors_highdim, "\n")
+
+```
+
+### Lasso Regression
+
+```{r}
+# Lasso model with tuning for penalty
+lasso <- linear_reg(
+  penalty = tune(), #lambda
+  mixture = 1   # L1 for lasso
+  ) %>%
+  set_engine("glmnet") %>%
+  set_mode("regression")
+
+# Workflow using formula
+lasso_wf <- workflow() %>%
+  add_model(lasso) %>%
+  add_recipe(highdim_recipe)
+
+cv_folds <- vfold_cv(training(data_split), v = 10)
+
+# Same tuning grid
+lambda_grid <- grid_regular(penalty(), levels = 20)
+
+# Tune the lasso model using cross-validation
+lasso_res <- tune_grid(
+  lasso_wf,
+  resamples = cv_folds,
+  grid = lambda_grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+# Select best lambda based on RMSE
+best_lasso <- select_best(lasso_res, metric = "rmse")
+print(best_lasso)
+
+# Finalize workflow with best lambda
+final_lasso <- finalize_workflow(lasso_wf, best_lasso)
+
+# Evaluate on test set
+final_fit <- last_fit(final_lasso, split = data_split)
+
+# Metrics
+collect_metrics(final_fit)
+
+# Plot predictions
+collect_predictions(final_fit) %>%
+  ggplot(aes(x = .pred, y = PV1MATH)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(color = "red") +
+  labs(title = "Lasso: Predicted vs Actual Math Scores")
+
+# Optional: see which variables were kept
+final_fit %>%
+  extract_workflow() %>%
+  tidy() %>%
+  filter(estimate != 0)
+```
+
+### Ridge Regression
+
+Ridge regression was used as the second type of high dimensional model. We used interactions to get 522 features from 22, making it high dimensional. The goal was predictive accuracy and it was good at dealing with many correlated predictors which were present such as PVSCIE and PVREAD. Unlike lasso which removed the variables that were shrunk to 0, ridge reression it shrinks predictors towards 0 showing they are less important but keeps them in the model.
+
+```{r}
+# Ridge model specification (L2 penalty)
+ridge_model <- linear_reg(
+  penalty = tune(),
+  mixture = 0  # Ridge
+) %>%
+  set_engine("glmnet") %>%
+  set_mode("regression")
+
+# Workflow
+ridge_wf <- workflow() %>%
+  add_recipe(highdim_recipe) %>%
+  add_model(ridge_model)
+
+# Cross-validation folds
+cv_folds <- vfold_cv(data_training, v = 10)
+
+# Grid for tuning lambda
+lambda_grid <- grid_regular(penalty(), levels = 20)
+
+# Tune model
+ridge_res <- tune_grid(
+  ridge_wf,
+  resamples = cv_folds,
+  grid = lambda_grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+# Select best lambda
+best_ridge <- select_best(ridge_res, metric = "rmse")
+print(best_ridge)
+
+# Finalize and fit on full training data
+final_ridge <- finalize_workflow(ridge_wf, best_ridge)
+
+# Final model evaluation on test data
+final_ridge_fit <- last_fit(final_ridge, split = data_split)
+
+# Metrics
+collect_metrics(final_ridge_fit)
+
+# Plot predictions
+collect_predictions(final_ridge_fit) %>%
+  ggplot(aes(x = .pred, y = PV1MATH)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(color = "red") +
+  labs(title = "Ridge: Predicted vs Actual Math Scores")
+
+# Optional: check coefficient shrinkage (will not zero-out in ridge)
+final_ridge_fit %>%
+  extract_workflow() %>%
+  tidy() %>%
+  arrange(desc(abs(estimate)))
+```
+
+
+
+
 
 ## Prediction Based Models
 
@@ -356,3 +531,16 @@ forest_rmse <- rmse(forest_preds, truth = PV1MATH, estimate = .pred)
 forest_rmse
 
 ```
+
+
+## Summary Table
+
+Model | R-Squared | RMSE
+Baseline LR | 0.69 | 57.47
+GD LR | 0.76 | 463.90
+GAM | NA | 51.83
+Decision Tree | NA | 57.00
+
+
+
+
