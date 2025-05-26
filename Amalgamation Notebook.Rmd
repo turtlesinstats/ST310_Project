@@ -355,7 +355,6 @@ cat("Number of predictors after preprocessing:", num_predictors_highdim, "\n")
 ```
 
 ### Lasso Regression
-
 ```{r}
 # Lasso model with tuning for penalty
 lasso <- linear_reg(
